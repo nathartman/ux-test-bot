@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@supabase/supabase-js": "^2.99.1",
     "@uiw/react-md-editor": "^4.0.11",
     "assemblyai": "^4.27.0",
     "class-variance-authority": "^0.7.1",

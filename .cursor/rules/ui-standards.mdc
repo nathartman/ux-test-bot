@@ -1,0 +1,43 @@
+---
+description: UI standards for all frontend work in this repo. Apply whenever building or editing components, pages, or styles.
+globs: src/components/**,src/app/**/*.tsx
+alwaysApply: false
+---
+
+# UI Standards — Emil Design Engineering
+
+Apply these principles to ALL UI work in this repo. Reference the full skill at ~/.cursor/skills/emil-design-engineering/.
+
+## Forms & Inputs
+- Wrap inputs in `<form>` so Enter submits
+- Support Cmd+Enter / Ctrl+Enter for textarea submission
+- Disable buttons after submission to prevent duplicates
+- Use `spellCheck={false}` and `autoComplete="off"` on non-standard text inputs
+- Font size 16px+ on inputs to prevent iOS zoom (shadcn handles this)
+- Labels must be associated with inputs via `htmlFor`/`id`
+
+## Layout & Typography
+- No layout shift: use hardcoded dimensions, `tabular-nums` for changing numbers
+- Never change font weight on hover/selected states
+- Use `text-wrap: balance` on headings
+
+## Animations & Transitions
+- Never use `transition: all` — specify exact properties
+- Enter/exit: `ease-out`, 150-250ms
+- Movement: `ease-in-out`
+- Hover/color: `ease`
+- Every animation needs `prefers-reduced-motion` support
+- Don't animate things users see 100+ times daily
+
+## Touch & Accessibility
+- 44px minimum tap targets
+- Hover effects only via `@media (hover: hover) and (pointer: fine)`
+- Every icon button needs `aria-label`
+- Keyboard navigation must work: tab order, focus management
+- `touch-action: manipulation` on buttons/links to prevent double-tap zoom
+
+## Performance
+- Only animate `transform` and `opacity`
+- Avoid blur filters > 20px
+- Pause looping animations when off-screen
+- Virtualize lists with > ~50 items

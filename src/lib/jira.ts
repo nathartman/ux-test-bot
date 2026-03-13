@@ -379,7 +379,7 @@ Return ONLY the JSON array, no explanation.`,
         if (accountId) {
           await assignIssue(issueKey, accountId);
         } else {
-          console.warn(`Could not find Jira user for "${query}"`);
+          console.warn(`Could not find Jira user for "${act.user_query}"`);
         }
         break;
       }

@@ -551,9 +551,9 @@ export default function SessionPage() {
       console.error("Learning failed:", err);
     }
 
-    await saveSession(sessionId, { status: "filed" });
+    await saveSession(sessionId, { status: "filed", learningCompleted: true });
     setSession((prev) =>
-      prev ? { ...prev, status: "filed" } : prev
+      prev ? { ...prev, status: "filed", learningCompleted: true } : prev
     );
   }, [session, sessionId]);
 
@@ -668,8 +668,20 @@ export default function SessionPage() {
               >
                 &larr; Back to notes
               </Button>
-              <Button size="sm" onClick={handleFinishSession}>
-                Finish session
+              <Button
+                size="sm"
+                onClick={
+                  session.learningCompleted
+                    ? async () => {
+                        await saveSession(sessionId, { status: "filed" });
+                        setSession((prev) =>
+                          prev ? { ...prev, status: "filed" } : prev
+                        );
+                      }
+                    : handleFinishSession
+                }
+              >
+                {session.learningCompleted ? "View summary" : "Finish session"}
               </Button>
             </div>
           </div>

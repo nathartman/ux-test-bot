@@ -76,6 +76,7 @@ export interface SessionStore {
   tickets: TicketProposal[];
   proposedTickets: TicketProposal[];
   status: ProcessingStatus;
+  learningCompleted?: boolean;
 }
 
 export interface SessionListItem {

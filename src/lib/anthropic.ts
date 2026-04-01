@@ -169,7 +169,7 @@ TICKET RULES:
 - Each ticket = one actionable item, not a theme
 - For bugs: include steps to reproduce, expected vs actual behavior
 - For improvements: frame around the observed user behavior and the problem it caused. Focus on the problem, not a specific solution — unless the fix is truly obvious.
-- Write descriptions about what THIS participant did, not generic "users" statements. Reference "the participant" and describe the specific behavior you observed. Let the real incident make the case — don't editorialize with general UX principles.
+- NEVER generalize about "users" — write about what THIS participant did. Say "confused the participant" not "is confusing to users." Say "the participant couldn't find X" not "users may struggle to find X." Reference "the participant" by role or by name throughout. Describe the specific incident, not a hypothetical pattern. Let the real behavior make the case — don't editorialize with general UX principles.
 - When the transcript contains a relevant direct quote from the user that illustrates the issue, include it in the description as a markdown blockquote (> quote). Keep it to the most impactful 1-2 sentences. No attribution needed.
 - Never use Highest/Critical priority
 - Always include the ux-research label

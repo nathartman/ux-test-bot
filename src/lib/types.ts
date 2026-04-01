@@ -2,6 +2,7 @@ export type ProcessingStatus =
   | "uploading"
   | "transcribing"
   | "analyzing"
+  | "analyze-failed"
   | "reviewing-notes"
   | "generating-tickets"
   | "reviewing-tickets"

@@ -251,7 +251,7 @@ SUMMARY NOTES (already generated — for context only):
 ${summaryNotes}`;
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 4096,
     system: buildDetailedNotesPrompt(),
     messages: [{ role: "user", content: userMessage }],

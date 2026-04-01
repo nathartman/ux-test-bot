@@ -7,6 +7,7 @@ const STATUS_LABELS: Record<ProcessingStatus, string> = {
   uploading: "Uploading audio",
   transcribing: "Transcribing (this takes 1–3 minutes)",
   analyzing: "Generating session notes",
+  "analyze-failed": "Notes generation failed",
   "reviewing-notes": "Ready for review",
   "generating-tickets": "Generating tickets from your notes",
   "reviewing-tickets": "Reviewing tickets",

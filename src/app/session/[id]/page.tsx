@@ -59,450 +59,1117 @@ export default function SessionPage() {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [selectedTickets, setSelectedTickets] = useState<Set<number>>(new Set());
+  const [emailStep, setEmailStep] = useState<"hidden" | "select" | "draft">("hidden");
+  const [emailSelected, setEmailSelected] = useState<Set<number>>(new Set());
+  const [emailDraft, setEmailDraft] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
 
-  // Load session on mount
-  useEffect(() => {
-    const loadSession = async () => {
-      try {
-        const sessionData = await getSession(sessionId);
-        if (sessionData) {
-          setSession(sessionData);
-          // Load screenshot URLs
-          if (sessionData.screenshots && sessionData.screenshots.length > 0) {
-            const urls = await getScreenshotUrls(sessionData.screenshots);
-            if (urls && urls.length > 0) {
-              setVideoUrl(urls[0]);
-              setThumbnailUrl(urls[0]);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load session:", error);
-        toast.error("Failed to load session");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadSession();
-  }, [sessionId]);
-
-  // Setup polling
-  useEffect(() => {
-    if (!session) return;
-
-    const poll = async () => {
-      try {
-        const updated = await getSession(sessionId);
-        if (updated) {
-          setSession(updated);
-        }
-      } catch (error) {
-        console.error("Poll error:", error);
-      }
-    };
-
-    pollingRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [sessionId, session]);
-
-  // Autosave mechanism
-  useEffect(() => {
-    if (!session) return;
-
-    // Clear existing timer
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-
-    // Set new timer
-    autosaveTimer.current = setTimeout(async () => {
-      try {
-        await saveSession(sessionId, session);
-      } catch (error) {
-        console.error("Autosave failed:", error);
-      }
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => {
-      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    };
-  }, [session, sessionId]);
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (session) {
-      setSession({ ...session, title: e.target.value });
-    }
-  };
-
-  const handleSessionNotesChange = (value: string) => {
-    if (session) {
-      setSession({ ...session, sessionNotes: value });
-    }
-  };
-
-  const handleAnalysisNotesChange = (value: string) => {
-    if (session) {
-      setSession({ ...session, analysisNotes: value });
-    }
-  };
-
-  const handleTicketsChange = (tickets: TicketProposal[]) => {
-    if (session) {
-      setSession({ ...session, tickets });
-    }
-  };
-
-  const runAnalysis = useCallback(async () => {
-    if (!session?.transcript) {
-      toast.error("No transcript available");
+  const loadSession = useCallback(async () => {
+    const s = await getSession(sessionId);
+    if (!s) {
+      router.replace("/");
       return;
     }
+    setSession(s);
 
-    analyzingRef.current = true;
+    const urls = await getScreenshotUrls(sessionId);
+    if (Object.keys(urls).length > 0) {
+      setScreenshotUrls(urls);
+    }
+
+    const storedUrl = sessionStorage.getItem("videoObjectUrl");
+    if (storedUrl) {
+      try {
+        const probe = await fetch(storedUrl);
+        if (probe.ok) {
+          setVideoUrl(storedUrl);
+        } else {
+          sessionStorage.removeItem("videoObjectUrl");
+        }
+      } catch {
+        sessionStorage.removeItem("videoObjectUrl");
+      }
+    }
+
+    setLoading(false);
+  }, [router, sessionId]);
+
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
+
+  // --- Debounced auto-save ---
+
+  const scheduleAutosave = useCallback(
+    (patch: Partial<SessionStore>) => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = setTimeout(async () => {
+        await saveSession(sessionId, patch);
+      }, AUTOSAVE_DELAY_MS);
+    },
+    [sessionId]
+  );
+
+  // --- Transcription polling ---
+
+  const pollTranscription = useCallback(async () => {
+    if (!session?.transcriptId) return;
 
     try {
-      // Phase 1: Summary generation
-      toast.loading("Generating summary analysis...");
+      const res = await fetch(`/api/transcribe/${session.transcriptId}`);
+      if (!res.ok) throw new Error(`Poll failed: ${res.status}`);
 
-      const summaryResponse = await fetch("/api/analyze", {
+      const data = await res.json();
+
+      if (data.status === "completed") {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+
+        const transcript: TranscriptData = {
+          utterances: data.utterances ?? [],
+          words: data.words ?? [],
+          text: data.text ?? "",
+        };
+
+        await saveSession(sessionId, { transcript, status: "analyzing" });
+        setSession((prev) =>
+          prev ? { ...prev, transcript, status: "analyzing" } : prev
+        );
+        toast.success("Transcription complete");
+      } else if (data.status === "error") {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        toast.error("Transcription failed. Please try again.");
+      }
+    } catch (err) {
+      console.error("Polling error:", err);
+    }
+  }, [session?.transcriptId, sessionId]);
+
+  useEffect(() => {
+    if (session?.status !== "transcribing" || !session.transcriptId) return;
+
+    pollTranscription();
+    pollingRef.current = setInterval(pollTranscription, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [session?.status, session?.transcriptId, pollTranscription]);
+
+  // --- Generate notes (step 1 of analysis) ---
+
+  const runAnalysis = useCallback(async () => {
+    if (!session?.transcript || analyzingRef.current) return;
+    analyzingRef.current = true;
+
+    const payload = {
+      transcript: session.transcript,
+      facilitatorNotes: session.facilitatorNotes,
+      participantName: session.metadata.participantName,
+      sessionDate: session.metadata.sessionDate,
+      zoomLink: session.metadata.zoomLink,
+      zoomPasscode: session.metadata.zoomPasscode,
+    };
+
+    try {
+      // Phase 1: Generate summary notes (overview, pain points, ideas)
+      const summaryRes = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: session.transcript,
-          phase: "summary",
-        }),
+        body: JSON.stringify({ ...payload, phase: "summary" }),
       });
 
-      if (!summaryResponse.ok) {
-        throw new Error(`Phase 1 failed: ${summaryResponse.statusText}`);
+      if (!summaryRes.ok) {
+        const body = await summaryRes.json().catch(() => ({}));
+        throw new Error(
+          (body as { error?: string }).error ||
+            `Summary generation failed: ${summaryRes.status}`
+        );
       }
 
-      const summaryData = (await summaryResponse.json()) as {
-        analysis: string;
-        tickets: TicketProposal[];
-      };
+      const { notes: summaryNotes } = await summaryRes.json();
 
-      // Phase 2: Detailed notes
-      toast.loading("Generating detailed notes...");
-
-      const detailedResponse = await fetch("/api/analyze", {
+      // Phase 2: Generate detailed session notes (chronological with quotes)
+      const detailedRes = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: session.transcript,
-          phase: "detailed",
-        }),
+        body: JSON.stringify({ ...payload, phase: "detailed", summaryNotes }),
       });
 
-      if (!detailedResponse.ok) {
-        throw new Error(`Phase 2 failed: ${detailedResponse.statusText}`);
+      if (!detailedRes.ok) {
+        const body = await detailedRes.json().catch(() => ({}));
+        throw new Error(
+          (body as { error?: string }).error ||
+            `Detailed notes generation failed: ${detailedRes.status}`
+        );
       }
 
-      const detailedData = (await detailedResponse.json()) as {
-        analysis: string;
-      };
+      const { notes: detailedNotes } = await detailedRes.json();
 
-      // Combine results
-      const combinedAnalysis = `${summaryData.analysis}\n\n---\n\n${detailedData.analysis}`;
+      // Combine: summary sections + divider + detailed notes
+      const combinedNotes = `${summaryNotes}\n\n---\n\n${detailedNotes}`;
 
-      // Update session
-      const updatedSession = {
-        ...session,
-        analysisNotes: combinedAnalysis,
-        tickets: summaryData.tickets,
-        lastAnalyzed: new Date().toISOString(),
-      };
+      await saveSession(sessionId, {
+        notesMarkdown: combinedNotes,
+        status: "reviewing-notes",
+      });
 
-      setSession(updatedSession);
-
-      // Save immediately
-      await saveSession(sessionId, updatedSession);
-
-      toast.success("Analysis complete");
-    } catch (error) {
-      console.error("Analysis error:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Analysis failed"
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              notesMarkdown: combinedNotes,
+              status: "reviewing-notes",
+            }
+          : prev
       );
-    } finally {
+
+      toast.success("Session notes generated");
+    } catch (err) {
+      console.error("Analysis error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Notes generation failed"
+      );
       analyzingRef.current = false;
     }
   }, [session, sessionId]);
 
-  const handleSaveScreenshot = useCallback(
-    async (blob: Blob) => {
-      try {
-        if (!session) return;
+  useEffect(() => {
+    if (session?.status === "analyzing" && session.transcript) {
+      runAnalysis();
+    }
+  }, [session?.status, session?.transcript, runAnalysis]);
 
-        // Upload screenshot
-        const fileName = `screenshot-${Date.now()}.png`;
-        await uploadScreenshot(sessionId, blob, fileName);
+  // --- Notes handlers ---
 
-        // Get URL and add to session
-        const urls = await getScreenshotUrls([fileName]);
-        if (urls && urls.length > 0) {
-          const newScreenshots = [...(session.screenshots || []), fileName];
-          const updatedSession = { ...session, screenshots: newScreenshots };
-          setSession(updatedSession);
-          await saveSession(sessionId, updatedSession);
-
-          // Update video URL
-          setVideoUrl(urls[0]);
-          setThumbnailUrl(urls[0]);
-          toast.success("Screenshot saved");
-        }
-      } catch (error) {
-        console.error("Screenshot error:", error);
-        toast.error("Failed to save screenshot");
-      }
+  const handleNotesChange = useCallback(
+    (value: string) => {
+      setSession((prev) =>
+        prev ? { ...prev, notesMarkdown: value } : prev
+      );
+      scheduleAutosave({ notesMarkdown: value });
     },
-    [session, sessionId]
+    [scheduleAutosave]
   );
 
-  const handleDeleteSession = useCallback(async () => {
-    try {
-      await deleteSession(sessionId);
-      toast.success("Session deleted");
-      router.push("/");
-    } catch (error) {
-      console.error("Delete error:", error);
-      toast.error("Failed to delete session");
-    }
-  }, [sessionId, router]);
+  // --- Generate tickets (step 2, after notes are edited) ---
 
-  const handleCopyEmail = useCallback(async () => {
-    if (!session) return;
+  const generatingTicketsRef = useRef(false);
 
-    const emailText = `
-Session Title: ${session.title}
+  const handleDoneNotes = useCallback(async () => {
+    if (!session?.transcript || generatingTicketsRef.current) return;
+    generatingTicketsRef.current = true;
 
-Session Notes:
-${session.sessionNotes}
-
-Analysis:
-${session.analysisNotes}
-
-${
-  session.tickets && session.tickets.length > 0
-    ? `
-Proposed Tickets:
-${session.tickets.map((t) => `- ${t.title} (${t.type})`).join("\n")}
-`
-    : ""
-}
-    `.trim();
+    await saveSession(sessionId, { status: "generating-tickets" });
+    setSession((prev) =>
+      prev ? { ...prev, status: "generating-tickets" } : prev
+    );
 
     try {
-      await navigator.clipboard.writeText(emailText);
-      setCopied(true);
-      toast.success("Copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Copy error:", error);
-      toast.error("Failed to copy");
-    }
-  }, [session]);
+      const res = await fetch("/api/generate-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editedNotes: session.notesMarkdown,
+          transcript: session.transcript,
+          participantName: session.metadata.participantName,
+          sessionDate: session.metadata.sessionDate,
+          zoomLink: session.metadata.zoomLink,
+          zoomPasscode: session.metadata.zoomPasscode,
+        }),
+      });
 
-  const handleSelectTicket = useCallback((index: number, selected: boolean) => {
-    setSelectedTickets((prev) => {
-      const newSet = new Set(prev);
-      if (selected) {
-        newSet.add(index);
-      } else {
-        newSet.delete(index);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          (body as { error?: string }).error ||
+            `Ticket generation failed: ${res.status}`
+        );
       }
-      return newSet;
-    });
+
+      const { tickets } = await res.json();
+
+      await saveSession(sessionId, {
+        tickets,
+        proposedTickets: JSON.parse(JSON.stringify(tickets)),
+        status: "reviewing-tickets",
+      });
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              tickets,
+              proposedTickets: JSON.parse(JSON.stringify(tickets)),
+              status: "reviewing-tickets",
+            }
+          : prev
+      );
+
+      toast.success("Tickets generated from your notes");
+    } catch (err) {
+      console.error("Ticket generation error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Ticket generation failed"
+      );
+      await saveSession(sessionId, { status: "reviewing-notes" });
+      setSession((prev) =>
+        prev ? { ...prev, status: "reviewing-notes" } : prev
+      );
+      generatingTicketsRef.current = false;
+    }
+  }, [session, sessionId]);
+
+  // --- Ticket handlers ---
+
+  const handleTicketChange = useCallback(
+    (index: number, ticket: TicketProposal) => {
+      setSession((prev) => {
+        if (!prev) return prev;
+        const tickets = [...prev.tickets];
+        tickets[index] = ticket;
+        return { ...prev, tickets };
+      });
+      setSession((prev) => {
+        if (prev) scheduleAutosave({ tickets: prev.tickets });
+        return prev;
+      });
+    },
+    [scheduleAutosave]
+  );
+
+  // --- Screenshot capture ---
+
+  const [captureTarget, setCaptureTarget] = useState<number | null>(null);
+  const [screenshotUrls, setScreenshotUrls] = useState<Record<string, string>>({});
+  const [screenshotBlobs, setScreenshotBlobs] = useState<Record<string, Blob>>({});
+  const [screenshotWarnings, setScreenshotWarnings] = useState<
+    Record<string, string>
+  >({});
+
+  const handleCaptureScreenshot = useCallback((ticketIndex: number) => {
+    setCaptureTarget(ticketIndex);
   }, []);
 
-  if (loading) {
+  const handleScreenshotCaptured = useCallback(
+    async (blob: Blob) => {
+      if (captureTarget === null) return;
+
+      const key = String(captureTarget);
+      setScreenshotBlobs((prev) => ({ ...prev, [key]: blob }));
+      setCaptureTarget(null);
+
+      try {
+        const url = await uploadScreenshot(sessionId, captureTarget, blob);
+        setScreenshotUrls((prev) => ({ ...prev, [key]: url }));
+      } catch (err) {
+        console.error("Failed to upload screenshot:", err);
+      }
+
+      const ticket = session?.tickets[captureTarget];
+      if (ticket) {
+        try {
+          const reader = new FileReader();
+          const base64 = await new Promise<string>((resolve) => {
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              resolve(result.split(",")[1]);
+            };
+            reader.readAsDataURL(blob);
+          });
+
+          const res = await fetch("/api/validate-screenshot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              screenshotBase64: base64,
+              ticket: {
+                title: ticket.title,
+                description: ticket.description,
+                timestampContext: ticket.timestampContext,
+              },
+            }),
+          });
+
+          if (res.ok) {
+            const result = await res.json();
+            if (!result.valid) {
+              setScreenshotWarnings((prev) => ({
+                ...prev,
+                [key]: result.reason,
+              }));
+            } else {
+              setScreenshotWarnings((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+            }
+          }
+        } catch {
+          // Validation is best-effort
+        }
+      }
+    },
+    [captureTarget, sessionId, session?.tickets]
+  );
+
+
+  // --- File single ticket ---
+
+  const handleFileTicket = useCallback(
+    async (index: number) => {
+      if (!session) return;
+      const ticket = session.tickets[index];
+
+      const screenshotBlob = screenshotBlobs[String(index)];
+      const screenshotEntries: Record<string, string> = {};
+      if (screenshotBlob) {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(",")[1]);
+          };
+          reader.readAsDataURL(screenshotBlob);
+        });
+        screenshotEntries["0"] = base64;
+      }
+
+      const res = await fetch("/api/file-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tickets: [{ ...ticket, included: true }],
+          screenshots: screenshotEntries,
+          zoomLink: session.metadata.zoomLink,
+          zoomPasscode: session.metadata.zoomPasscode,
+          sessionDate: session.metadata.sessionDate,
+          participantName: session.metadata.participantName,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          (body as { error?: string }).error || `Filing failed: ${res.status}`
+        );
+      }
+
+      const results = (await res.json()) as Array<{
+        ticketKey: string;
+        url: string;
+        success: boolean;
+        error?: string;
+      }>;
+
+      const r = results[0];
+      if (!r?.success) {
+        throw new Error(r?.error || "Jira ticket creation failed");
+      }
+
+      toast.success(`Created ${r.ticketKey}`, {
+        action: {
+          label: "Open",
+          onClick: () => window.open(r.url, "_blank"),
+        },
+      });
+
+      const updatedTicket: TicketProposal = {
+        ...ticket,
+        ticketStatus: "filed",
+        filedKey: r.ticketKey,
+        filedUrl: r.url,
+        included: false,
+      };
+
+      setSession((prev) => {
+        if (!prev) return prev;
+        const tickets = [...prev.tickets];
+        tickets[index] = updatedTicket;
+        return { ...prev, tickets };
+      });
+
+      await saveSession(sessionId, {
+        tickets: session.tickets.map((t, i) =>
+          i === index ? updatedTicket : t
+        ),
+      });
+    },
+    [session, sessionId, screenshotBlobs]
+  );
+
+  // --- Check if all tickets are done ---
+
+  const allTicketsDone =
+    session?.tickets.every(
+      (t) => t.ticketStatus !== "pending"
+    ) ?? false;
+
+  const filedCount =
+    session?.tickets.filter((t) => t.ticketStatus === "filed").length ?? 0;
+  const painPointCount =
+    session?.tickets.filter((t) => t.ticketStatus === "pain-point").length ?? 0;
+  const skippedCount =
+    session?.tickets.filter((t) => t.ticketStatus === "skipped").length ?? 0;
+
+  // --- Finish session: learn from edits ---
+
+  const handleFinishSession = useCallback(async () => {
+    if (!session) return;
+
+    await saveSession(sessionId, { status: "learning" });
+    setSession((prev) =>
+      prev ? { ...prev, status: "learning" } : prev
+    );
+
+    try {
+      const proposed = (session.proposedTickets ?? []).map((t) => ({
+        title: t.title,
+        type: t.type,
+        priority: t.priority,
+        teams: t.teams,
+        description: t.description,
+      }));
+
+      const actual = session.tickets
+        .filter((t) => t.ticketStatus !== "skipped")
+        .map((t) => ({
+          title: t.title,
+          type: t.type,
+          priority: t.priority,
+          teams: t.teams,
+          description: t.description,
+          ticketStatus: t.ticketStatus,
+          loggedAsPainPoint: t.loggedAsPainPoint,
+        }));
+
+      const res = await fetch("/api/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proposedTickets: proposed,
+          actualTickets: actual,
+          sessionDate: session.metadata.sessionDate,
+          participantName: session.metadata.participantName,
+        }),
+      });
+
+      if (res.ok) {
+        const { learnings } = await res.json();
+        if (learnings.length > 0) {
+          toast.success(
+            `${learnings.length} learning${learnings.length !== 1 ? "s" : ""} saved for next session`
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Learning failed:", err);
+    }
+
+    await saveSession(sessionId, { status: "filed", learningCompleted: true });
+    setSession((prev) =>
+      prev ? { ...prev, status: "filed", learningCompleted: true } : prev
+    );
+  }, [session, sessionId]);
+
+  // --- Render ---
+
+  if (loading) return null;
+  if (!session) return null;
+
+  // Processing states
+  if (
+    session.status === "uploading" ||
+    session.status === "transcribing" ||
+    session.status === "analyzing" ||
+    session.status === "generating-tickets" ||
+    session.status === "learning"
+  ) {
     return (
-      <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">Loading session...</p>
+      <main className="flex min-h-screen flex-col items-center justify-center px-4">
+        <div className="w-full max-w-md space-y-6">
+          <div>
+            <h1 className="text-lg font-medium text-balance">
+              Processing session
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {session.metadata.participantName} &mdash;{" "}
+              {session.metadata.sessionDate || "No date"}
+            </p>
+          </div>
+
+          <ProcessingStatusIndicator status={session.status} />
+
+          {session.status === "transcribing" && (
+            <p className="text-xs text-muted-foreground">
+              Polling every 5 seconds. You can leave this tab open.
+            </p>
+          )}
+
+          {session.status === "analyzing" && (
+            <p className="text-xs text-muted-foreground">
+              Generating session notes. This may take 30&ndash;60 seconds.
+            </p>
+          )}
+
+          {session.status === "generating-tickets" && (
+            <p className="text-xs text-muted-foreground">
+              Generating tickets from your edited notes. This may take
+              30&ndash;60 seconds.
+            </p>
+          )}
         </div>
       </main>
     );
   }
 
-  if (!session) {
+  // Phase 1: Notes review (full-width)
+  if (session.status === "reviewing-notes") {
     return (
-      <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
-        <div className="text-center">
-          <p className="text-white mb-4">Session not found</p>
-          <Button onClick={() => router.push("/")} className="bg-blue-600 hover:bg-blue-700">
-            Return to Dashboard
-          </Button>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-      <div className="max-w-7xl mx-auto p-4 md:p-6">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center gap-4 mb-4">
-            <input
-              type="text"
-              value={session.title}
-              onChange={handleTitleChange}
-              placeholder="Session title"
-              className="text-2xl md:text-3xl font-bold bg-transparent border-b-2 border-slate-600 focus:border-blue-500 outline-none w-full"
-            />
-            <span className="text-sm font-medium px-3 py-1 bg-blue-600 rounded-full whitespace-nowrap">
-              {new Date(session.createdAt).toLocaleDateString()}
+      <div className="flex h-screen flex-col">
+        <header className="flex items-center justify-between border-b px-4 py-2">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/")}
+            >
+              &larr; Back
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {session.metadata.participantName} &mdash;{" "}
+              {session.metadata.sessionDate || "No date"}
             </span>
           </div>
-
-          <div className="flex flex-wrap gap-2 mb-6">
-            <Button
-              onClick={runAnalysis}
-              disabled={analyzingRef.current}
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
-            >
-              <span className="mr-2">✨</span>
-              Run Analysis
-            </Button>
-
-            <Button
-              onClick={() => setShowPreview(!showPreview)}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <span className="mr-2">📹</span>
-              {showPreview ? "Hide" : "Show"} Preview
-            </Button>
-
-            <Button
-              onClick={handleCopyEmail}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {copied ? <Check size={20} /> : <Copy size={20} />}
-              <span className="ml-2">{copied ? "Copied" : "Copy"}</span>
-            </Button>
-
-            <Button
-              onClick={handleDeleteSession}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </Button>
-          </div>
+          <Button size="sm" onClick={handleDoneNotes}>
+            Done editing &rarr; Generate tickets
+          </Button>
+        </header>
+        <div className="flex-1 overflow-hidden">
+          <NotesEditor
+            value={session.notesMarkdown}
+            onChange={handleNotesChange}
+          />
         </div>
+      </div>
+    );
+  }
 
-        {/* Preview */}
-        {showPreview && videoUrl && (
-          <div className="mb-6 rounded-lg overflow-hidden shadow-lg">
-            <img
-              src={videoUrl}
-              alt="Session preview"
-              className="w-full h-auto bg-slate-800"
-            />
+  // Phase 2: Ticket review (one by one)
+  if (session.status === "reviewing-tickets") {
+    return (
+      <div className="flex h-screen flex-col">
+        {/* Summary banner when all done */}
+        {allTicketsDone && (
+          <div className="flex items-center justify-between bg-muted px-4 py-3">
+            <p className="text-sm">
+              All done. {filedCount} filed
+              {painPointCount > 0 &&
+                `, ${painPointCount} pain point${painPointCount !== 1 ? "s" : ""}`}
+              {skippedCount > 0 &&
+                `, ${skippedCount} skipped`}
+              .
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await saveSession(sessionId, { status: "reviewing-notes" });
+                  setSession((prev) =>
+                    prev ? { ...prev, status: "reviewing-notes" } : prev
+                  );
+                }}
+              >
+                &larr; Back to notes
+              </Button>
+              <Button
+                size="sm"
+                onClick={
+                  session.learningCompleted
+                    ? async () => {
+                        await saveSession(sessionId, { status: "filed" });
+                        setSession((prev) =>
+                          prev ? { ...prev, status: "filed" } : prev
+                        );
+                      }
+                    : handleFinishSession
+                }
+              >
+                {session.learningCompleted ? "View summary" : "Finish session"}
+              </Button>
+            </div>
           </div>
         )}
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div className="space-y-6">
-            {/* Session Notes */}
-            <div className="bg-slate-800 rounded-lg p-4">
-              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                <FileText size={20} />
-                Session Notes
-              </h2>
-              <Textarea
-                value={session.sessionNotes}
-                onChange={(e) => handleSessionNotesChange(e.target.value)}
-                placeholder="Observations, key moments, and context..."
-                className="w-full h-32 bg-slate-700 border-slate-600 text-white placeholder-slate-400"
-              />
-            </div>
-
-            {/* Video Capture */}
-            <div className="bg-slate-800 rounded-lg p-4">
-              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                <CircleDot size={20} />
-                Capture
-              </h2>
-              <VideoCapture onCapture={handleSaveScreenshot} />
-            </div>
+        <header className="flex items-center justify-between border-b px-4 py-2">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                await saveSession(sessionId, { status: "reviewing-notes" });
+                setSession((prev) =>
+                  prev ? { ...prev, status: "reviewing-notes" } : prev
+                );
+              }}
+            >
+              &larr; Back to notes
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {session.metadata.participantName} &mdash;{" "}
+              {session.metadata.sessionDate || "No date"}
+            </span>
           </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Analysis Notes */}
-            <div className="bg-slate-800 rounded-lg p-4">
-              <h2 className="text-lg font-semibold mb-2">Analysis Notes</h2>
-              <NotesEditor
-                value={session.analysisNotes}
-                onChange={handleAnalysisNotesChange}
-              />
-            </div>
+          <div className="flex items-center gap-2">
+            {videoUrl && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-green-500" />
+                Video loaded
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = ".mp4";
+                input.onchange = (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file) {
+                    if (videoUrl) URL.revokeObjectURL(videoUrl);
+                    const url = URL.createObjectURL(file);
+                    sessionStorage.setItem("videoObjectUrl", url);
+                    setVideoUrl(url);
+                  }
+                };
+                input.click();
+              }}
+            >
+              {videoUrl ? "Change video" : "Load video for screenshots"}
+            </Button>
           </div>
+        </header>
+
+        <div className="flex-1 overflow-hidden">
+          <TicketReviewer
+            tickets={session.tickets}
+            onTicketChange={handleTicketChange}
+            onFileTicket={handleFileTicket}
+            onCaptureScreenshot={handleCaptureScreenshot}
+            screenshots={{ ...screenshotUrls, ...screenshotBlobs }}
+            onRemoveScreenshot={(key) => {
+              setScreenshotUrls((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+              setScreenshotBlobs((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+              setScreenshotWarnings((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+            }}
+            screenshotWarnings={screenshotWarnings}
+            onDismissWarning={(key) =>
+              setScreenshotWarnings((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              })
+            }
+            sessionMetadata={session.metadata}
+          />
         </div>
 
-        {/* Tickets Section */}
-        {session.tickets && session.tickets.length > 0 && (
-          <div className="mt-6 bg-slate-800 rounded-lg p-4">
-            <h2 className="text-lg font-semibold mb-4">Proposed Tickets</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {session.tickets.map((ticket, index) => (
-                <TicketReviewer
-                  key={index}
-                  ticket={ticket}
-                  isSelected={selectedTickets.has(index)}
-                  onSelect={(selected) => handleSelectTicket(index, selected)}
-                  onUpdate={(updated) => {
-                    const newTickets = [...session.tickets];
-                    newTickets[index] = updated;
-                    handleTicketsChange(newTickets);
-                  }}
-                />
+        {/* Video capture dialog */}
+        {videoUrl &&
+          captureTarget !== null &&
+          session.tickets[captureTarget] && (
+            <VideoCapture
+              open
+              videoUrl={videoUrl}
+              ticket={session.tickets[captureTarget]}
+              onCapture={handleScreenshotCaptured}
+              onClose={() => setCaptureTarget(null)}
+              onUpdateTimestamp={(ms) => {
+                handleTicketChange(captureTarget, {
+                  ...session.tickets[captureTarget],
+                  suggestedTimestampMs: ms,
+                });
+              }}
+              existingScreenshot={
+                screenshotBlobs[String(captureTarget)] ?? null
+              }
+            />
+          )}
+      </div>
+    );
+  }
+
+  // Filed: summary
+  const filedTickets = session.tickets.filter(
+    (t) => t.ticketStatus === "filed" && t.filedUrl
+  );
+  const painPointTickets = session.tickets.filter(
+    (t) => t.ticketStatus === "pain-point"
+  );
+  const selectableTickets = session.tickets
+    .map((t, i) => ({ ticket: t, originalIndex: i }))
+    .filter(
+      ({ ticket: t }) =>
+        (t.ticketStatus === "filed" && t.filedUrl) ||
+        t.ticketStatus === "pain-point"
+    );
+
+  function toggleEmailSelection(index: number) {
+    setEmailSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  // Ticket row component used in both summary and selection screens
+  function TicketRow({
+    ticket: t,
+    selectable,
+    selected,
+    onToggle,
+  }: {
+    ticket: TicketProposal;
+    selectable?: boolean;
+    selected?: boolean;
+    onToggle?: () => void;
+  }) {
+    const isPainPoint = t.ticketStatus === "pain-point";
+    const typeInfo = ISSUE_TYPE_ICON[t.type];
+    const TypeIcon = typeInfo.icon;
+    const priority = PRIORITY_OPTIONS.find((p) => p.id === t.priorityId);
+
+    const rowClass = selectable
+      ? `flex w-full items-start gap-3 px-4 py-3 text-left cursor-pointer transition-colors duration-150 ease-out ${
+          selected ? "bg-accent" : "hover:bg-muted/50"
+        }`
+      : "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-150 ease-out hover:bg-muted/50";
+
+    const content = (
+      <>
+        {selectable ? (
+          <div
+            className={`flex size-5 shrink-0 items-center justify-center rounded border transition-colors duration-150 ease-out ${
+              selected
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-muted-foreground/30"
+            }`}
+          >
+            {selected && <Check className="size-3.5" />}
+          </div>
+        ) : isPainPoint ? (
+          <CircleDot className="size-4 shrink-0 text-violet-500" />
+        ) : (
+          <TypeIcon className={`size-4 shrink-0 ${typeInfo.className}`} />
+        )}
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="text-sm font-medium leading-snug">{t.title}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {isPainPoint ? (
+              <span className="inline-flex items-center gap-1 rounded border border-violet-200 dark:border-violet-800 px-1.5 py-0.5 text-xs text-violet-600 dark:text-violet-400">
+                Pain point
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded border border-border/60 px-1.5 py-0.5 text-xs font-medium font-mono text-muted-foreground">
+                <TypeIcon className={`size-3 ${typeInfo.className}`} />
+                {t.filedKey}
+              </span>
+            )}
+            {t.teams.map((team) => (
+              <span key={team} className="inline-flex items-center rounded border border-border/60 px-1.5 py-0.5 text-xs text-muted-foreground">
+                {team}
+              </span>
+            ))}
+            {priority && priority.id !== "5" && (
+              <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${priority.color}`}>
+                {priority.shortLabel}
+              </span>
+            )}
+          </div>
+        </div>
+        {!selectable && !isPainPoint && (
+          <ExternalLink className="size-3.5 shrink-0 text-muted-foreground/50" />
+        )}
+      </>
+    );
+
+    if (selectable) {
+      return (
+        <button type="button" onClick={onToggle} className={rowClass}>
+          {content}
+        </button>
+      );
+    }
+
+    if (!isPainPoint && t.filedUrl) {
+      return (
+        <a href={t.filedUrl} target="_blank" rel="noopener noreferrer" className={rowClass}>
+          {content}
+        </a>
+      );
+    }
+
+    return <div className={rowClass}>{content}</div>;
+  }
+
+  // --- Email selection screen ---
+  if (emailStep === "select") {
+    return (
+      <main className="flex min-h-screen flex-col items-center px-4 py-16">
+        <div className="w-full max-w-2xl space-y-6">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold">Select key takeaways</h1>
+            <p className="text-sm text-muted-foreground">
+              Choose the issues you want the email to focus on.
+            </p>
+          </div>
+
+          <div className="divide-y rounded-lg border">
+            {selectableTickets.map(({ ticket, originalIndex }) => (
+              <TicketRow
+                key={originalIndex}
+                ticket={ticket}
+                selectable
+                selected={emailSelected.has(originalIndex)}
+                onToggle={() => toggleEmailSelection(originalIndex)}
+              />
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEmailStep("hidden");
+                setEmailSelected(new Set());
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={emailSelected.size === 0 || emailLoading}
+              onClick={async () => {
+                setEmailLoading(true);
+                try {
+                  const allFiled = session.tickets
+                    .filter((t) => t.ticketStatus === "filed")
+                    .map((t) => ({
+                      title: t.title,
+                      type: t.type,
+                      teams: t.teams,
+                      priority: t.priority,
+                      filedKey: t.filedKey,
+                    }));
+                  const highlighted = Array.from(emailSelected).map((i) => {
+                    const t = session.tickets[i];
+                    return {
+                      title: t.title,
+                      type: t.type,
+                      teams: t.teams,
+                      priority: t.priority,
+                      filedKey: t.filedKey,
+                      description: t.description,
+                      isPainPoint: t.ticketStatus === "pain-point",
+                    };
+                  });
+                  const res = await fetch("/api/generate-email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      notes: session.notesMarkdown,
+                      tickets: allFiled,
+                      highlightedIssues: highlighted,
+                      participantName: session.metadata.participantName,
+                      sessionDate: session.metadata.sessionDate,
+                    }),
+                  });
+                  if (!res.ok) throw new Error("Failed to generate email");
+                  const data = await res.json();
+                  setEmailDraft(data.email);
+                  setEmailStep("draft");
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : "Failed to generate email"
+                  );
+                } finally {
+                  setEmailLoading(false);
+                }
+              }}
+            >
+              <Mail className="size-4" />
+              {emailLoading
+                ? "Generating…"
+                : `Generate email (${emailSelected.size} selected)`}
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // --- Email draft screen ---
+  if (emailStep === "draft" && emailDraft !== null) {
+    return (
+      <main className="flex min-h-screen flex-col items-center px-4 py-16">
+        <div className="w-full max-w-2xl space-y-6">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold">Email draft</h1>
+            <p className="text-sm text-muted-foreground">
+              Edit as needed, then copy and paste into your email.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => {
+                  navigator.clipboard.writeText(emailDraft);
+                  setEmailCopied(true);
+                  setTimeout(() => setEmailCopied(false), 2000);
+                }}
+              >
+                {emailCopied ? (
+                  <Check className="size-3" />
+                ) : (
+                  <Copy className="size-3" />
+                )}
+                {emailCopied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <Textarea
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              className="min-h-80 font-mono text-xs leading-relaxed"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEmailStep("hidden");
+                setEmailDraft(null);
+                setEmailSelected(new Set());
+              }}
+            >
+              Back to summary
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // --- Summary screen ---
+  return (
+    <main className="flex min-h-screen flex-col items-center px-4 py-16">
+      <div className="w-full max-w-xl space-y-8">
+        <div className="space-y-2 text-center">
+          <h1 className="text-lg font-semibold text-balance">Session complete</h1>
+          <p className="text-sm text-muted-foreground">
+            {session.metadata.participantName} &mdash; {session.metadata.sessionDate}
+          </p>
+        </div>
+
+        {/* Stats row */}
+        <div className="flex justify-center gap-6">
+          {[
+            { label: "Filed", value: filedCount, icon: SquareCheckBig, color: "text-green-600 dark:text-green-400" },
+            { label: "Pain points", value: painPointCount, icon: CircleDot, color: "text-violet-600 dark:text-violet-400" },
+            { label: "Skipped", value: skippedCount, icon: SkipForward, color: "text-muted-foreground" },
+          ].map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.label} className="flex items-center gap-2 text-sm">
+                <Icon className={`size-4 ${stat.color}`} />
+                <span className="tabular-nums font-medium">{stat.value}</span>
+                <span className="text-muted-foreground">{stat.label}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Filed tickets */}
+        {filedTickets.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Filed tickets
+            </h2>
+            <div className="divide-y rounded-lg border">
+              {filedTickets.map((t) => (
+                <TicketRow key={t.filedKey} ticket={t} />
               ))}
             </div>
           </div>
         )}
 
-        {/* Processing Status */}
-        {session.processingStatus && (
-          <ProcessingStatusIndicator status={session.processingStatus} />
+        {/* Pain points */}
+        {painPointTickets.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Pain points logged
+            </h2>
+            <div className="divide-y rounded-lg border">
+              {painPointTickets.map((t, i) => (
+                <TicketRow key={i} ticket={t} />
+              ))}
+            </div>
+          </div>
         )}
 
-        {/* Footer */}
-        <div className="mt-8 flex flex-wrap gap-2 justify-center pb-8">
-          <Button onClick={() => router.push("/")} className="bg-slate-700 hover:bg-slate-600">
-            <SkipForward size={20} className="mr-2" />
-            Back to Dashboard
+        {/* Actions */}
+        <div className="flex justify-center gap-2 pt-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await saveSession(sessionId, { status: "reviewing-tickets" });
+              setSession((prev) =>
+                prev ? { ...prev, status: "reviewing-tickets" } : prev
+              );
+            }}
+          >
+            Back to tickets
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setEmailStep("select")}
+          >
+            <Mail className="size-4" />
+            Generate email
           </Button>
           <Button
             onClick={async () => {
-              try {
-                await saveSession(sessionId, session);
-                toast.success("Session saved");
-              } catch (error) {
-                console.error("Save error:", error);
-                toast.error("Failed to save session");
-              }
+              await deleteSession(sessionId);
+              router.push("/");
             }}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Save Session
-          </Button>
-          <Button onClick={() => router.push(`/export/${sessionId}`)} className="bg-slate-700 hover:bg-slate-600">
-            <Mail size={20} className="mr-2" />
-            Export & Send
-          </Button>
-          <Button
-            onClick={handleDeleteSession}
-            className="bg-red-600 hover:bg-red-700"
           >
             Clear session
           </Button>

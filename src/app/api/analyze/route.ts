@@ -1,12 +1,33 @@
 import { NextResponse } from "next/server";
-import { generateNotes, type AnalyzeSessionInput } from "@/lib/anthropic";
+import {
+  generateSummaryNotes,
+  generateDetailedNotes,
+  type AnalyzeSessionInput,
+} from "@/lib/anthropic";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const input = (await req.json()) as AnalyzeSessionInput;
-    const notes = await generateNotes(input);
+    const body = await req.json();
+    const { phase, summaryNotes, ...input } = body as AnalyzeSessionInput & {
+      phase?: "summary" | "detailed";
+      summaryNotes?: string;
+    };
+
+    if (phase === "detailed") {
+      if (!summaryNotes) {
+        return NextResponse.json(
+          { error: "summaryNotes required for detailed phase" },
+          { status: 400 }
+        );
+      }
+      const detailed = await generateDetailedNotes(input, summaryNotes);
+      return NextResponse.json({ notes: detailed });
+    }
+
+    // Default: generate summary notes (phase 1)
+    const notes = await generateSummaryNotes(input);
     return NextResponse.json({ notes });
   } catch (err) {
     console.error("Notes generation failed:", err);

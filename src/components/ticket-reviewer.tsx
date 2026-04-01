@@ -158,6 +158,7 @@ interface TicketReviewerProps {
   onCaptureScreenshot: (index: number) => void;
   screenshots: Record<string, Blob | string>;
   screenshotWarnings: Record<string, string>;
+  onRemoveScreenshot: (key: string) => void;
   onDismissWarning: (key: string) => void;
   sessionMetadata: {
     participantName: string;
@@ -174,6 +175,7 @@ export function TicketReviewer({
   onCaptureScreenshot,
   screenshots,
   screenshotWarnings,
+  onRemoveScreenshot,
   onDismissWarning,
   sessionMetadata,
 }: TicketReviewerProps) {
@@ -566,7 +568,19 @@ export function TicketReviewer({
                   <div className="space-y-2">
                     {screenshot ? (
                       <div className="flex items-start gap-3">
-                        <ScreenshotPreview src={screenshot} />
+                        <div className="group relative">
+                          <ScreenshotPreview src={screenshot} />
+                          {!isFiled && (
+                            <button
+                              type="button"
+                              onClick={() => onRemoveScreenshot(String(activeIndex))}
+                              className="absolute -top-1.5 -right-1.5 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-opacity duration-150 ease-out group-hover:flex"
+                              aria-label="Remove screenshot"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          )}
+                        </div>
                         {!isFiled && (
                           <Button
                             variant="outline"

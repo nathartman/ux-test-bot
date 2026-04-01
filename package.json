@@ -11,7 +11,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@supabase/supabase-js": "^2.99.1",
-    "@uiw/react-md-editor": "^4.0.11",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tiptap/extension-table": "^3.22.0",
+    "@tiptap/markdown": "^3.22.0",
+    "@tiptap/pm": "^3.22.0",
+    "@tiptap/react": "^3.22.0",
+    "@tiptap/starter-kit": "^3.22.0",
     "assemblyai": "^4.27.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

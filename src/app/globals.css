@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -128,32 +130,52 @@
   }
 }
 
-/* MD Editor preview pane overrides */
-.w-md-editor-preview {
-  background: oklch(0.97 0 0) !important;
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif !important;
-  font-size: 0.8125rem !important;
-  line-height: 1.6 !important;
+.prose-tight {
+  --tw-prose-spacing: 0.25em;
 }
 
-.w-md-editor-preview .wmde-markdown {
-  font-family: inherit !important;
+.prose-tight :is(h2, h3, h4) {
+  margin-top: 1.25em;
+  margin-bottom: 0.375em;
+}
+
+.prose-tight :is(ul, ol) {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.prose-tight li {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.prose-tight li p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.tiptap {
+  outline: none;
+}
+
+.tiptap table {
+  border-collapse: collapse !important;
+  width: auto !important;
   font-size: inherit !important;
-  background: transparent !important;
+  margin-top: 0.5em !important;
+  margin-bottom: 0.5em !important;
 }
 
-.w-md-editor-preview .wmde-markdown h1,
-.w-md-editor-preview .wmde-markdown h2,
-.w-md-editor-preview .wmde-markdown h3,
-.w-md-editor-preview .wmde-markdown h4 {
-  font-family: inherit !important;
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--border) !important;
+  padding: 0.125rem 0.5rem !important;
+  text-align: left !important;
+  vertical-align: top !important;
+  font-size: inherit !important;
 }
 
-/* MD Editor textarea styling */
-.w-md-editor-text-pre,
-.w-md-editor-text-input,
-.w-md-editor-text textarea {
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif !important;
-  font-size: 0.8125rem !important;
-  line-height: 1.6 !important;
+.tiptap th {
+  font-weight: 600 !important;
+  background: var(--muted) !important;
 }

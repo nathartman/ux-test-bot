@@ -93,4 +93,5 @@ export interface FileTicketResult {
   ticketKey: string;
   url: string;
   success: boolean;
+  error?: string;
 }

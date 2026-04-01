@@ -445,11 +445,12 @@ export default function SessionPage() {
         ticketKey: string;
         url: string;
         success: boolean;
+        error?: string;
       }>;
 
       const r = results[0];
       if (!r?.success) {
-        throw new Error("Jira ticket creation failed");
+        throw new Error(r?.error || "Jira ticket creation failed");
       }
 
       toast.success(`Created ${r.ticketKey}`, {
@@ -744,6 +745,23 @@ export default function SessionPage() {
             onFileTicket={handleFileTicket}
             onCaptureScreenshot={handleCaptureScreenshot}
             screenshots={{ ...screenshotUrls, ...screenshotBlobs }}
+            onRemoveScreenshot={(key) => {
+              setScreenshotUrls((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+              setScreenshotBlobs((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+              setScreenshotWarnings((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+            }}
             screenshotWarnings={screenshotWarnings}
             onDismissWarning={(key) =>
               setScreenshotWarnings((prev) => {

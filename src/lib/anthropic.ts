@@ -236,7 +236,7 @@ ${summaryNotes}`;
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 12000,
+    max_tokens: 8192,
     system: buildDetailedNotesPrompt(),
     messages: [{ role: "user", content: userMessage }],
   });

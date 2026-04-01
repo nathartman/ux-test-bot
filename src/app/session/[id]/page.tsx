@@ -239,6 +239,11 @@ export default function SessionPage() {
       toast.error(
         err instanceof Error ? err.message : "Notes generation failed"
       );
+      // Reset status so user can retry
+      await saveSession(sessionId, { status: "analyze-failed" });
+      setSession((prev) =>
+        prev ? { ...prev, status: "analyze-failed" } : prev
+      );
       analyzingRef.current = false;
     }
   }, [session, sessionId]);
@@ -591,6 +596,7 @@ export default function SessionPage() {
     session.status === "uploading" ||
     session.status === "transcribing" ||
     session.status === "analyzing" ||
+    session.status === "analyze-failed" ||
     session.status === "generating-tickets" ||
     session.status === "learning"
   ) {
@@ -617,8 +623,28 @@ export default function SessionPage() {
 
           {session.status === "analyzing" && (
             <p className="text-xs text-muted-foreground">
-              Generating session notes. This may take 30&ndash;60 seconds.
+              Generating session notes. This may take 60&ndash;90 seconds.
             </p>
+          )}
+
+          {session.status === "analyze-failed" && (
+            <div className="space-y-2">
+              <p className="text-xs text-destructive">
+                Notes generation failed. This can happen with long transcripts.
+              </p>
+              <button
+                className="text-sm underline text-primary"
+                onClick={() => {
+                  analyzingRef.current = false;
+                  saveSession(sessionId, { status: "analyzing" });
+                  setSession((prev) =>
+                    prev ? { ...prev, status: "analyzing" } : prev
+                  );
+                }}
+              >
+                Retry
+              </button>
+            </div>
           )}
 
           {session.status === "generating-tickets" && (

@@ -25,7 +25,7 @@ export function NotesEditor({ value, onChange }: NotesEditorProps) {
       Markdown.configure({
         markedOptions: { gfm: true },
       }),
-      TableKit.configure({ resizable: false }),
+      TableKit.configure({}),
     ],
     content: value,
     contentType: "markdown",

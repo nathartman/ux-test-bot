@@ -36,7 +36,7 @@ If the participant offered a summary reflection, include it.
 ---
 
 DETAILED SESSION NOTES:
-Thorough, chronological account of the session with direct quotes and timestamps. This section is the primary record for long-term storage and future reference. Organize by task phase:
+Thorough, chronological account of the session. Organize by task phase:
 
 1. [Phase name, e.g. "Account Creation & First Impressions"]
 2. [Next phase]
@@ -44,10 +44,13 @@ Thorough, chronological account of the session with direct quotes and timestamps
 
 Within each phase:
 - Describe what the participant did step by step
-- Include direct quotes liberally — use the exact words, with timestamps (e.g. [12:34])
+- Include direct quotes when illustrative
+- For relevant back-and-forth exchanges, use script-style dialog:
+  > **Participant:** "exact words"
+  > **Facilitator:** "exact words"
 - Note body language or tone cues if the facilitator mentioned them (hesitation, frustration, surprise)
 - Note when the facilitator intervened and what they said
 - Note what the participant tried that didn't work, even if they eventually found the right path
 - Include the participant's reasoning when they explain why they clicked something or expected something
 
-Be thorough. The purpose of this section is to serve as a searchable reference that will be stored in a knowledge base. Err on the side of including too much detail and too many quotes rather than too few. Use specific product terminology, feature names, and UI element names so this section is findable when searching for those terms later.
+Be thorough in coverage but concise in prose. Do not include timestamps. Use specific product terminology, feature names, and UI element names so this section is findable when searching for those terms later.

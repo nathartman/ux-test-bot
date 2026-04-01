@@ -74,7 +74,7 @@ function buildDetailedNotesPrompt(): string {
 
   return `You are a UX researcher producing detailed session notes from a usability testing session. You will receive a transcript with speaker labels and timestamps, the facilitator's notes, AND the summary notes already generated from this session.
 
-Your job is to produce ONLY the detailed chronological session notes section. This section will be stored in a knowledge base for long-term retrieval by LLMs — be very thorough.
+Your job is to produce ONLY the detailed chronological session notes section. This section will be stored in a knowledge base for long-term retrieval by LLMs — be thorough but concise.
 
 SOURCE WEIGHTING:
 - Facilitator notes = PRIMARY source. Trust these over the transcript.
@@ -83,18 +83,32 @@ SOURCE WEIGHTING:
 
 OUTPUT FORMAT:
 Return ONLY a markdown string (not JSON, not wrapped in code fences) following this structure:
-${detailedFormat}
+
+DETAILED SESSION NOTES:
+Thorough, chronological account of the session. Organize by task phase:
+
+1. [Phase name, e.g. "Account Creation & First Impressions"]
+2. [Next phase]
+3. etc.
+
+Within each phase:
+- Describe what the participant did step by step
+- Include direct quotes when illustrative
+- For relevant back-and-forth exchanges, use script-style dialog format:
+  > **Participant:** "exact words"
+  > **Facilitator:** "exact words"
+- Note when the facilitator intervened
+- Note what the participant tried that didn't work
 
 WRITING STYLE:
-- Direct and specific, not academic
+- Direct and concise — state what happened, don't narrate it
 - Use the participant's name after introducing them
-- Include direct quotes LIBERALLY — use exact words with timestamps in [MM:SS] format
-- Note body language or tone cues if the facilitator mentioned them
-- Note when the facilitator intervened and what they said
-- Note what the participant tried that didn't work
+- Do NOT include timestamps — they are not needed here
+- Use script-style dialog (as shown above) for relevant exchanges instead of paraphrasing conversations
+- Note body language or tone cues only if the facilitator mentioned them
 - Include the participant's reasoning when they explain why they clicked something or expected something
 - Use specific product terminology, feature names, and UI element names so this section is findable by keyword search
-- More detail is better than less — err on the side of including too much`;
+- Be thorough in coverage but efficient in prose — capture every meaningful event without being wordy`;
 }
 
 async function buildTicketsSystemPrompt(): Promise<string> {
@@ -251,8 +265,8 @@ SUMMARY NOTES (already generated — for context only):
 ${summaryNotes}`;
 
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 4096,
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 8192,
     system: buildDetailedNotesPrompt(),
     messages: [{ role: "user", content: userMessage }],
   });

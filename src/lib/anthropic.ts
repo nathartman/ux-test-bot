@@ -202,8 +202,7 @@ function stripCodeFences(text: string): string {
 export async function generateSummaryNotes(
   input: AnalyzeSessionInput
 ): Promise<string> {
-  // ~100k chars ≈ ~25k tokens input — fits comfortably under 60s
-  const formattedTranscript = formatTranscript(input.transcript, 100_000);
+  const formattedTranscript = formatTranscript(input.transcript);
 
   const userMessage = `SESSION DETAILS:
 - Participant: ${input.participantName}
@@ -235,8 +234,7 @@ export async function generateDetailedNotes(
   input: AnalyzeSessionInput,
   summaryNotes: string
 ): Promise<string> {
-  // ~80k chars for detailed phase (leaves room for summaryNotes in the prompt)
-  const formattedTranscript = formatTranscript(input.transcript, 80_000);
+  const formattedTranscript = formatTranscript(input.transcript);
 
   const userMessage = `SESSION DETAILS:
 - Participant: ${input.participantName}
@@ -254,7 +252,7 @@ ${summaryNotes}`;
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 8192,
+    max_tokens: 4096,
     system: buildDetailedNotesPrompt(),
     messages: [{ role: "user", content: userMessage }],
   });

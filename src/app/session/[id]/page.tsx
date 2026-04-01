@@ -580,7 +580,11 @@ export default function SessionPage() {
       console.error("Learning failed:", err);
     }
 
-    await saveSession(sessionId, { status: "filed", learningCompleted: true });
+    try {
+      await saveSession(sessionId, { status: "filed", learningCompleted: true });
+    } catch (err) {
+      console.error("Failed to save filed status:", err);
+    }
     setSession((prev) =>
       prev ? { ...prev, status: "filed", learningCompleted: true } : prev
     );

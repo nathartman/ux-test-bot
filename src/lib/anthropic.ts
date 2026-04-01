@@ -161,9 +161,13 @@ AVAILABLE TEAMS (use these exact names and IDs):
 ${teamList}${learningsBlock}`;
 }
 
-function formatTranscript(transcript: TranscriptData): string {
+function formatTranscript(
+  transcript: TranscriptData,
+  maxChars?: number
+): string {
+  let text: string;
   if (transcript.utterances.length > 0) {
-    return transcript.utterances
+    text = transcript.utterances
       .map((u) => {
         const startSec = Math.round(u.start / 1000);
         const mm = Math.floor(startSec / 60);
@@ -171,8 +175,20 @@ function formatTranscript(transcript: TranscriptData): string {
         return `[${mm}:${ss}] Speaker ${u.speaker}: ${u.text}`;
       })
       .join("\n");
+  } else {
+    text = transcript.text;
   }
-  return transcript.text;
+
+  if (maxChars && text.length > maxChars) {
+    // Truncate to last full line within the limit
+    const truncated = text.slice(0, maxChars);
+    const lastNewline = truncated.lastIndexOf("\n");
+    return (
+      (lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated) +
+      "\n\n[... transcript truncated for length ...]"
+    );
+  }
+  return text;
 }
 
 function stripCodeFences(text: string): string {
@@ -186,7 +202,8 @@ function stripCodeFences(text: string): string {
 export async function generateSummaryNotes(
   input: AnalyzeSessionInput
 ): Promise<string> {
-  const formattedTranscript = formatTranscript(input.transcript);
+  // ~100k chars ≈ ~25k tokens input — fits comfortably under 60s
+  const formattedTranscript = formatTranscript(input.transcript, 100_000);
 
   const userMessage = `SESSION DETAILS:
 - Participant: ${input.participantName}
@@ -218,7 +235,8 @@ export async function generateDetailedNotes(
   input: AnalyzeSessionInput,
   summaryNotes: string
 ): Promise<string> {
-  const formattedTranscript = formatTranscript(input.transcript);
+  // ~80k chars for detailed phase (leaves room for summaryNotes in the prompt)
+  const formattedTranscript = formatTranscript(input.transcript, 80_000);
 
   const userMessage = `SESSION DETAILS:
 - Participant: ${input.participantName}

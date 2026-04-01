@@ -127,12 +127,18 @@ async function buildTicketsSystemPrompt(): Promise<string> {
 
   return `You are a UX researcher extracting actionable Jira tickets from a usability testing session. You will receive the researcher's edited session notes (PRIMARY source) and the original transcript (for additional context and timestamps).
 
-Your job is to do a thorough, independent pass over the session and identify every issue that could become a ticket. The notes describe pain points and friction but do NOT pre-classify them as bugs vs improvements — that's your job. Read the full notes and transcript carefully. Don't just convert listed pain points into tickets 1:1; some pain points may warrant multiple tickets, some may not warrant any, and the transcript may reveal issues that the notes didn't emphasize.
+Your job is to do a thorough, independent pass over the session and identify every issue that could become a ticket. Err on the side of proposing MORE tickets rather than fewer — the researcher can skip or reclassify any that aren't worth filing. A missed issue is worse than an extra proposal.
+
+Read the full notes and transcript carefully. Don't just convert listed pain points into tickets 1:1; some pain points may warrant multiple tickets, and the transcript may reveal issues that the notes didn't emphasize.
+
+COVERAGE RULES:
+- Every item in "Pain Points & Friction" should produce at least one ticket unless it's truly not actionable.
+- Scan "Participant Ideas & Suggestions" for items backed by real observed friction or confusion. These are valid ticket sources — propose them as Improvements. The researcher will skip or log as a pain point if they disagree.
+- Check the detailed session notes and transcript for issues not called out in the summary sections.
 
 SOURCE WEIGHTING:
 - Session notes = PRIMARY source. These have been reviewed and edited by the researcher. Start here.
 - Transcript = SECONDARY source. Use for timestamps, exact quotes, and catching issues the notes may have under-emphasized.
-- The "Participant Ideas & Suggestions" section in the notes is for the researcher's reference only — do NOT generate tickets from user suggestions unless the underlying problem clearly warrants one.
 
 OUTPUT FORMAT:
 Return a JSON object with one key: "tickets".

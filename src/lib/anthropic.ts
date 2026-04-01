@@ -34,8 +34,17 @@ function loadConfigFiles() {
   return { writeupFormat, teamList };
 }
 
-function buildNotesSystemPrompt(): string {
+function splitWriteupFormat(): { summaryFormat: string; detailedFormat: string } {
   const { writeupFormat } = loadConfigFiles();
+  const parts = writeupFormat.split(/\n---\n/);
+  return {
+    summaryFormat: parts[0].trim(),
+    detailedFormat: parts.length > 1 ? parts[1].trim() : "",
+  };
+}
+
+function buildSummaryNotesPrompt(): string {
+  const { summaryFormat } = splitWriteupFormat();
 
   return `You are a UX researcher processing a usability testing session. You will receive a transcript with speaker labels and timestamps, plus the facilitator's own notes.
 
@@ -46,21 +55,46 @@ SOURCE WEIGHTING:
 
 OUTPUT FORMAT:
 Return ONLY a markdown string (not JSON, not wrapped in code fences) following this exact structure:
-${writeupFormat}
+${summaryFormat}
 
 IMPORTANT NOTES ON STRUCTURE:
-- The document has TWO levels of detail: an OVERVIEW at the top for quick scanning, and DETAILED SESSION NOTES at the bottom for thorough reference. Don't skimp on either \u2014 the overview should be genuinely concise, and the detailed notes should be genuinely thorough.
 - PAIN POINTS & FRICTION: Describe problems, not solutions. Focus on what went wrong for the user, how stuck they were, and what they said. Do NOT frame items as recommendations or suggestions for what the product should do. Just describe the pain.
-- PARTICIPANT IDEAS & SUGGESTIONS: Capture these faithfully in the participant's own words. Do not evaluate feasibility or relevance \u2014 just record what they said and what prompted it. These are raw signal.
-- DETAILED SESSION NOTES: This section will be stored in a knowledge base for long-term retrieval. Be very thorough. Include direct quotes with timestamps liberally. Use specific product terminology and feature names so the content is findable by keyword search. More detail is better than less.
+- PARTICIPANT IDEAS & SUGGESTIONS: Capture these faithfully in the participant's own words. Do not evaluate feasibility or relevance — just record what they said and what prompted it. These are raw signal.
 
 WRITING STYLE:
 - Direct and specific, not academic
 - Use the participant's name after introducing them
-- Include exact quotes when illustrative (and in the detailed notes section, include them liberally)
+- Include exact quotes when illustrative
 - Note when the facilitator had to intervene
-- Reflect uncertainty when it exists
-- In the detailed notes, include timestamps in [MM:SS] format for key moments`;
+- Reflect uncertainty when it exists`;
+}
+
+function buildDetailedNotesPrompt(): string {
+  const { detailedFormat } = splitWriteupFormat();
+
+  return `You are a UX researcher producing detailed session notes from a usability testing session. You will receive a transcript with speaker labels and timestamps, the facilitator's notes, AND the summary notes already generated from this session.
+
+Your job is to produce ONLY the detailed chronological session notes section. This section will be stored in a knowledge base for long-term retrieval by LLMs — be very thorough.
+
+SOURCE WEIGHTING:
+- Facilitator notes = PRIMARY source. Trust these over the transcript.
+- Transcript = SECONDARY source. Use for details, exact quotes, and reconstructing task flow.
+- Summary notes = CONTEXT. Use to understand what was already captured, but produce your own thorough account.
+
+OUTPUT FORMAT:
+Return ONLY a markdown string (not JSON, not wrapped in code fences) following this structure:
+${detailedFormat}
+
+WRITING STYLE:
+- Direct and specific, not academic
+- Use the participant's name after introducing them
+- Include direct quotes LIBERALLY — use exact words with timestamps in [MM:SS] format
+- Note body language or tone cues if the facilitator mentioned them
+- Note when the facilitator intervened and what they said
+- Note what the participant tried that didn't work
+- Include the participant's reasoning when they explain why they clicked something or expected something
+- Use specific product terminology, feature names, and UI element names so this section is findable by keyword search
+- More detail is better than less — err on the side of including too much`;
 }
 
 async function buildTicketsSystemPrompt(): Promise<string> {
@@ -79,12 +113,12 @@ async function buildTicketsSystemPrompt(): Promise<string> {
 
   return `You are a UX researcher extracting actionable Jira tickets from a usability testing session. You will receive the researcher's edited session notes (PRIMARY source) and the original transcript (for additional context and timestamps).
 
-Your job is to do a thorough, independent pass over the session and identify every issue that could become a ticket. The notes describe pain points and friction but do NOT pre-classify them as bugs vs improvements \u2014 that's your job. Read the full notes and transcript carefully. Don't just convert listed pain points into tickets 1:1; some pain points may warrant multiple tickets, some may not warrant any, and the transcript may reveal issues that the notes didn't emphasize.
+Your job is to do a thorough, independent pass over the session and identify every issue that could become a ticket. The notes describe pain points and friction but do NOT pre-classify them as bugs vs improvements — that's your job. Read the full notes and transcript carefully. Don't just convert listed pain points into tickets 1:1; some pain points may warrant multiple tickets, some may not warrant any, and the transcript may reveal issues that the notes didn't emphasize.
 
 SOURCE WEIGHTING:
 - Session notes = PRIMARY source. These have been reviewed and edited by the researcher. Start here.
 - Transcript = SECONDARY source. Use for timestamps, exact quotes, and catching issues the notes may have under-emphasized.
-- The "Participant Ideas & Suggestions" section in the notes is for the researcher's reference only \u2014 do NOT generate tickets from user suggestions unless the underlying problem clearly warrants one.
+- The "Participant Ideas & Suggestions" section in the notes is for the researcher's reference only — do NOT generate tickets from user suggestions unless the underlying problem clearly warrants one.
 
 OUTPUT FORMAT:
 Return a JSON object with one key: "tickets".
@@ -97,7 +131,7 @@ Return a JSON object with one key: "tickets".
   "teamIds": ["team ID string"],
   "priority": "High" | "Medium" | "Low",
   "priorityId": "2" | "3" | "4",
-  "description": "Detailed description with steps to reproduce for bugs, or observed behavior for improvements. For steps to reproduce, use a proper markdown numbered list (one step per line, formatted as '1. Step one\\n2. Step two'). When a relevant direct user quote exists in the transcript, include it as a blockquote on its own line (formatted as '> quote text'). Do NOT add any 'generated by Claude' or attribution line \u2014 that is added automatically.",
+  "description": "Detailed description with steps to reproduce for bugs, or observed behavior for improvements. For steps to reproduce, use a proper markdown numbered list (one step per line, formatted as '1. Step one\\n2. Step two'). When a relevant direct user quote exists in the transcript, include it as a blockquote on its own line (formatted as '> quote text'). Do NOT add any 'generated by Claude' or attribution line — that is added automatically.",
   "labels": ["ux-research"],
   "needsScreenshot": true | false,
   "suggestedTimestampMs": 123456 | null,
@@ -114,8 +148,8 @@ When in doubt between Bug and Improvement, lean Improvement. Reserve Bug for cle
 TICKET RULES:
 - Each ticket = one actionable item, not a theme
 - For bugs: include steps to reproduce, expected vs actual behavior
-- For improvements: frame around the observed user behavior and the problem it caused. Focus on the problem, not a specific solution \u2014 unless the fix is truly obvious.
-- Write descriptions about what THIS participant did, not generic "users" statements. Reference "the participant" and describe the specific behavior you observed. Let the real incident make the case \u2014 don't editorialize with general UX principles.
+- For improvements: frame around the observed user behavior and the problem it caused. Focus on the problem, not a specific solution — unless the fix is truly obvious.
+- Write descriptions about what THIS participant did, not generic "users" statements. Reference "the participant" and describe the specific behavior you observed. Let the real incident make the case — don't editorialize with general UX principles.
 - When the transcript contains a relevant direct quote from the user that illustrates the issue, include it in the description as a markdown blockquote (> quote). Keep it to the most impactful 1-2 sentences. No attribution needed.
 - Never use Highest/Critical priority
 - Always include the ux-research label
@@ -141,10 +175,17 @@ function formatTranscript(transcript: TranscriptData): string {
   return transcript.text;
 }
 
-export async function generateNotes(
+function stripCodeFences(text: string): string {
+  let raw = text.trim();
+  if (raw.startsWith("```")) {
+    raw = raw.replace(/^```(?:markdown|md|json)?\n?/, "").replace(/\n?```$/, "");
+  }
+  return raw;
+}
+
+export async function generateSummaryNotes(
   input: AnalyzeSessionInput
 ): Promise<string> {
-  const systemPrompt = buildNotesSystemPrompt();
   const formattedTranscript = formatTranscript(input.transcript);
 
   const userMessage = `SESSION DETAILS:
@@ -160,8 +201,8 @@ ${formattedTranscript}`;
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 16384,
-    system: systemPrompt,
+    max_tokens: 8192,
+    system: buildSummaryNotesPrompt(),
     messages: [{ role: "user", content: userMessage }],
   });
 
@@ -170,12 +211,51 @@ ${formattedTranscript}`;
     throw new Error("No text response from Claude");
   }
 
-  let raw = textBlock.text.trim();
-  if (raw.startsWith("```")) {
-    raw = raw.replace(/^```(?:markdown|md)?\n?/, "").replace(/\n?```$/, "");
+  return stripCodeFences(textBlock.text);
+}
+
+export async function generateDetailedNotes(
+  input: AnalyzeSessionInput,
+  summaryNotes: string
+): Promise<string> {
+  const formattedTranscript = formatTranscript(input.transcript);
+
+  const userMessage = `SESSION DETAILS:
+- Participant: ${input.participantName}
+- Date: ${input.sessionDate}
+- Zoom recording: ${input.zoomLink} (Passcode: ${input.zoomPasscode})
+
+FACILITATOR NOTES (PRIMARY SOURCE):
+${input.facilitatorNotes}
+
+TRANSCRIPT (SECONDARY SOURCE):
+${formattedTranscript}
+
+SUMMARY NOTES (already generated — for context only):
+${summaryNotes}`;
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 12000,
+    system: buildDetailedNotesPrompt(),
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("No text response from Claude");
   }
 
-  return raw;
+  return stripCodeFences(textBlock.text);
+}
+
+/** Combined call — for environments with longer timeouts (e.g. local dev) */
+export async function generateNotes(
+  input: AnalyzeSessionInput
+): Promise<string> {
+  const summary = await generateSummaryNotes(input);
+  const detailed = await generateDetailedNotes(input, summary);
+  return `${summary}\n\n---\n\n${detailed}`;
 }
 
 export interface GenerateTicketsInput {
@@ -198,10 +278,10 @@ export async function generateTickets(
 - Date: ${input.sessionDate}
 - Zoom recording: ${input.zoomLink} (Passcode: ${input.zoomPasscode})
 
-SESSION NOTES (PRIMARY SOURCE \u2014 reviewed and edited by the researcher):
+SESSION NOTES (PRIMARY SOURCE — reviewed and edited by the researcher):
 ${input.editedNotes}
 
-TRANSCRIPT (SECONDARY SOURCE \u2014 for timestamps and additional context):
+TRANSCRIPT (SECONDARY SOURCE — for timestamps and additional context):
 ${formattedTranscript}`;
 
   const response = await anthropic.messages.create({
@@ -407,7 +487,7 @@ export async function extractLearnings(
     messages: [
       {
         role: "user",
-        content: `You are analyzing a UX researcher's edits to AI-proposed Jira tickets. Compare the proposed tickets with what the user actually did (filed or logged as a pain point \u2014 possibly with edits). Skipped tickets are excluded from this data and should not be considered. Extract concise, actionable learnings for improving future ticket generation.
+        content: `You are analyzing a UX researcher's edits to AI-proposed Jira tickets. Compare the proposed tickets with what the user actually did (filed or logged as a pain point — possibly with edits). Skipped tickets are excluded from this data and should not be considered. Extract concise, actionable learnings for improving future ticket generation.
 
 Focus on patterns like:
 - Issue type changes (e.g. "Bug was changed to Improvement")

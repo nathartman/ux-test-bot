@@ -28,6 +28,7 @@ export const TEAMS: Record<string, string> = {
   "Machine Learning": "10507",
   "Computer Vision": "10405",
   Documentation: "10247",
+  NetCode: "10505",
 };
 
 export const TEAM_NAMES = [
@@ -38,4 +39,5 @@ export const TEAM_NAMES = [
   "Machine Learning",
   "Computer Vision",
   "Documentation",
+  "NetCode",
 ];

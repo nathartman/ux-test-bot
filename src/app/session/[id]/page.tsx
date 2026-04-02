@@ -354,10 +354,10 @@ export default function SessionPage() {
   // --- Screenshot capture ---
 
   const [captureTarget, setCaptureTarget] = useState<number | null>(null);
-  const [screenshotUrls, setScreenshotUrls] = useState<Record<string, string>>({});
-  const [screenshotBlobs, setScreenshotBlobs] = useState<Record<string, Blob>>({});
+  const [screenshotUrls, setScreenshotUrls] = useState<Record<string, string[]>>({});
+  const [screenshotBlobs, setScreenshotBlobs] = useState<Record<string, Blob[]>>({});
   const [screenshotWarnings, setScreenshotWarnings] = useState<
-    Record<string, string>
+    Record<string, string[]>
   >({});
 
   const handleCaptureScreenshot = useCallback((ticketIndex: number) => {
@@ -369,12 +369,19 @@ export default function SessionPage() {
       if (captureTarget === null) return;
 
       const key = String(captureTarget);
-      setScreenshotBlobs((prev) => ({ ...prev, [key]: blob }));
+      const newIndex = (screenshotBlobs[key] ?? []).length;
+      setScreenshotBlobs((prev) => ({
+        ...prev,
+        [key]: [...(prev[key] ?? []), blob],
+      }));
       setCaptureTarget(null);
 
       try {
-        const url = await uploadScreenshot(sessionId, captureTarget, blob);
-        setScreenshotUrls((prev) => ({ ...prev, [key]: url }));
+        const url = await uploadScreenshot(sessionId, captureTarget, blob, newIndex);
+        setScreenshotUrls((prev) => ({
+          ...prev,
+          [key]: [...(prev[key] ?? []), url],
+        }));
       } catch (err) {
         console.error("Failed to upload screenshot:", err);
       }
@@ -409,14 +416,8 @@ export default function SessionPage() {
             if (!result.valid) {
               setScreenshotWarnings((prev) => ({
                 ...prev,
-                [key]: result.reason,
+                [key]: [...(prev[key] ?? []), result.reason],
               }));
-            } else {
-              setScreenshotWarnings((prev) => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
-              });
             }
           }
         } catch {
@@ -424,7 +425,7 @@ export default function SessionPage() {
         }
       }
     },
-    [captureTarget, sessionId, session?.tickets]
+    [captureTarget, sessionId, session?.tickets, screenshotBlobs]
   );
 
 
@@ -435,18 +436,18 @@ export default function SessionPage() {
       if (!session) return;
       const ticket = session.tickets[index];
 
-      const screenshotBlob = screenshotBlobs[String(index)];
+      const ticketBlobs = screenshotBlobs[String(index)] ?? [];
       const screenshotEntries: Record<string, string> = {};
-      if (screenshotBlob) {
+      for (let si = 0; si < ticketBlobs.length; si++) {
         const base64 = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => {
             const result = reader.result as string;
             resolve(result.split(",")[1]);
           };
-          reader.readAsDataURL(screenshotBlob);
+          reader.readAsDataURL(ticketBlobs[si]);
         });
-        screenshotEntries["0"] = base64;
+        screenshotEntries[`0_${si}`] = base64;
       }
 
       const res = await fetch("/api/file-tickets", {
@@ -797,30 +798,61 @@ export default function SessionPage() {
             onTicketChange={handleTicketChange}
             onFileTicket={handleFileTicket}
             onCaptureScreenshot={handleCaptureScreenshot}
-            screenshots={{ ...screenshotUrls, ...screenshotBlobs }}
-            onRemoveScreenshot={(key) => {
+            screenshots={(() => {
+              // Merge URL arrays with blob arrays — blobs take precedence when present
+              const merged: Record<string, (Blob | string)[]> = {};
+              for (const key of new Set([...Object.keys(screenshotUrls), ...Object.keys(screenshotBlobs)])) {
+                merged[key] = (screenshotBlobs[key] as (Blob | string)[] | undefined) ?? screenshotUrls[key] ?? [];
+              }
+              return merged;
+            })()}
+            onRemoveScreenshot={(ticketKey, screenshotIdx) => {
               setScreenshotUrls((prev) => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
+                const arr = prev[ticketKey];
+                if (!arr) return prev;
+                const next = arr.filter((_, i) => i !== screenshotIdx);
+                if (next.length === 0) {
+                  const rest = { ...prev };
+                  delete rest[ticketKey];
+                  return rest;
+                }
+                return { ...prev, [ticketKey]: next };
               });
               setScreenshotBlobs((prev) => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
+                const arr = prev[ticketKey];
+                if (!arr) return prev;
+                const next = arr.filter((_, i) => i !== screenshotIdx);
+                if (next.length === 0) {
+                  const rest = { ...prev };
+                  delete rest[ticketKey];
+                  return rest;
+                }
+                return { ...prev, [ticketKey]: next };
               });
               setScreenshotWarnings((prev) => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
+                const arr = prev[ticketKey];
+                if (!arr) return prev;
+                const next = arr.filter((_, i) => i !== screenshotIdx);
+                if (next.length === 0) {
+                  const rest = { ...prev };
+                  delete rest[ticketKey];
+                  return rest;
+                }
+                return { ...prev, [ticketKey]: next };
               });
             }}
             screenshotWarnings={screenshotWarnings}
-            onDismissWarning={(key) =>
+            onDismissWarning={(ticketKey, warningIdx) =>
               setScreenshotWarnings((prev) => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
+                const arr = prev[ticketKey];
+                if (!arr) return prev;
+                const next = arr.filter((_, i) => i !== warningIdx);
+                if (next.length === 0) {
+                  const rest = { ...prev };
+                  delete rest[ticketKey];
+                  return rest;
+                }
+                return { ...prev, [ticketKey]: next };
               })
             }
             sessionMetadata={session.metadata}
@@ -843,8 +875,8 @@ export default function SessionPage() {
                   suggestedTimestampMs: ms,
                 });
               }}
-              existingScreenshot={
-                screenshotBlobs[String(captureTarget)] ?? null
+              existingScreenshots={
+                screenshotBlobs[String(captureTarget)] ?? []
               }
             />
           )}

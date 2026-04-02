@@ -22,10 +22,14 @@ export async function POST(req: Request) {
       participantName: string;
     };
 
-    const blobScreenshots: Record<string, Blob> = {};
+    const blobScreenshots: Record<string, Blob[]> = {};
     for (const [key, base64] of Object.entries(screenshots)) {
       const buffer = Buffer.from(base64, "base64");
-      blobScreenshots[key] = new Blob([buffer], { type: "image/png" });
+      const blob = new Blob([buffer], { type: "image/png" });
+      // Keys are "ticketIndex_screenshotIndex" (e.g. "0_0", "0_1")
+      const ticketIndex = key.includes("_") ? key.split("_")[0] : key;
+      if (!blobScreenshots[ticketIndex]) blobScreenshots[ticketIndex] = [];
+      blobScreenshots[ticketIndex].push(blob);
     }
 
     const results = await fileTickets(

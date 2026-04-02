@@ -156,10 +156,10 @@ interface TicketReviewerProps {
   onTicketChange: (index: number, ticket: TicketProposal) => void;
   onFileTicket: (index: number) => Promise<void>;
   onCaptureScreenshot: (index: number) => void;
-  screenshots: Record<string, Blob | string>;
-  screenshotWarnings: Record<string, string>;
-  onRemoveScreenshot: (key: string) => void;
-  onDismissWarning: (key: string) => void;
+  screenshots: Record<string, (Blob | string)[]>;
+  screenshotWarnings: Record<string, string[]>;
+  onRemoveScreenshot: (ticketKey: string, screenshotIndex: number) => void;
+  onDismissWarning: (ticketKey: string, warningIndex: number) => void;
   sessionMetadata: {
     participantName: string;
     sessionDate: string;
@@ -271,7 +271,8 @@ export function TicketReviewer({
 
   const isDone = ticket.ticketStatus === "filed" || ticket.ticketStatus === "pain-point";
   const isFiled = isDone;
-  const screenshot = screenshots[String(activeIndex)] ?? null;
+  const ticketScreenshots = screenshots[String(activeIndex)] ?? [];
+  const ticketWarnings = screenshotWarnings[String(activeIndex)] ?? [];
   const hasQuickWinLabel = ticket.labels.includes("design-engineer-quick-win");
 
 
@@ -566,54 +567,49 @@ export function TicketReviewer({
                   </div>
 
                   <div className="space-y-2">
-                    {screenshot ? (
-                      <div className="flex items-start gap-3">
-                        <div className="group relative">
-                          <ScreenshotPreview src={screenshot} />
-                          {!isFiled && (
-                            <button
-                              type="button"
-                              onClick={() => onRemoveScreenshot(String(activeIndex))}
-                              className="absolute -top-1.5 -right-1.5 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-opacity duration-150 ease-out group-hover:flex"
-                              aria-label="Remove screenshot"
-                            >
-                              <X className="size-3" />
-                            </button>
-                          )}
-                        </div>
-                        {!isFiled && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onCaptureScreenshot(activeIndex)}
-                          >
-                            Recapture
-                          </Button>
-                        )}
+                    {ticketScreenshots.length > 0 && (
+                      <div className="flex flex-wrap items-start gap-3">
+                        {ticketScreenshots.map((src, si) => (
+                          <div key={si} className="space-y-1">
+                            <div className="group relative">
+                              <ScreenshotPreview src={src} />
+                              {!isFiled && (
+                                <button
+                                  type="button"
+                                  onClick={() => onRemoveScreenshot(String(activeIndex), si)}
+                                  className="absolute -top-1.5 -right-1.5 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-opacity duration-150 ease-out group-hover:flex"
+                                  aria-label="Remove screenshot"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              )}
+                            </div>
+                            {ticketWarnings[si] && (
+                              <div className="flex items-start justify-between gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 dark:border-amber-800 dark:bg-amber-950/30">
+                                <p className="text-xs text-amber-800 dark:text-amber-300">
+                                  {ticketWarnings[si]}
+                                </p>
+                                <button
+                                  onClick={() => onDismissWarning(String(activeIndex), si)}
+                                  className="shrink-0 text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
+                                  aria-label="Dismiss warning"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ) : (
+                    )}
+                    {!isFiled && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => onCaptureScreenshot(activeIndex)}
-                        disabled={isFiled}
                       >
-                        Capture screenshot
+                        {ticketScreenshots.length > 0 ? "Add screenshot" : "Capture screenshot"}
                       </Button>
-                    )}
-                    {screenshotWarnings[String(activeIndex)] && (
-                      <div className="flex items-start justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/30">
-                        <p className="text-xs text-amber-800 dark:text-amber-300">
-                          Screenshot may not match: {screenshotWarnings[String(activeIndex)]}
-                        </p>
-                        <button
-                          onClick={() => onDismissWarning(String(activeIndex))}
-                          className="shrink-0 text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
-                          aria-label="Dismiss warning"
-                        >
-                          &times;
-                        </button>
-                      </div>
                     )}
                   </div>
                 </div>

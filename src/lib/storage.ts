@@ -197,9 +197,10 @@ export async function deleteSession(id: string): Promise<void> {
 export async function uploadScreenshot(
   sessionId: string,
   ticketIndex: number,
-  blob: Blob
+  blob: Blob,
+  screenshotIndex: number = 0
 ): Promise<string> {
-  const path = `${sessionId}/${ticketIndex}.png`;
+  const path = `${sessionId}/${ticketIndex}_${screenshotIndex}.png`;
 
   const { error } = await supabase.storage
     .from(SCREENSHOT_BUCKET)
@@ -217,20 +218,23 @@ export async function uploadScreenshot(
 
 export async function getScreenshotUrls(
   sessionId: string
-): Promise<Record<string, string>> {
+): Promise<Record<string, string[]>> {
   const { data: files, error } = await supabase.storage
     .from(SCREENSHOT_BUCKET)
     .list(sessionId);
 
   if (error || !files) return {};
 
-  const urls: Record<string, string> = {};
+  const urls: Record<string, string[]> = {};
   for (const file of files) {
-    const index = file.name.replace(".png", "");
+    const base = file.name.replace(".png", "");
+    // Support both old format (ticketIndex.png) and new (ticketIndex_screenshotIndex.png)
+    const ticketIndex = base.includes("_") ? base.split("_")[0] : base;
     const { data } = supabase.storage
       .from(SCREENSHOT_BUCKET)
       .getPublicUrl(`${sessionId}/${file.name}`);
-    urls[index] = data.publicUrl;
+    if (!urls[ticketIndex]) urls[ticketIndex] = [];
+    urls[ticketIndex].push(data.publicUrl);
   }
   return urls;
 }

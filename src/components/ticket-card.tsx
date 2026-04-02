@@ -29,7 +29,7 @@ interface TicketCardProps {
   index: number;
   onChange: (updated: TicketProposal) => void;
   onCaptureScreenshot: () => void;
-  screenshot: Blob | null;
+  screenshots: (Blob | string)[];
 }
 
 export function TicketCard({
@@ -37,7 +37,7 @@ export function TicketCard({
   index,
   onChange,
   onCaptureScreenshot,
-  screenshot,
+  screenshots,
 }: TicketCardProps) {
   function patch(fields: Partial<TicketProposal>) {
     onChange({ ...ticket, ...fields });
@@ -85,8 +85,13 @@ export function TicketCard({
                 {t}
               </Badge>
             ))}
-            {screenshot && (
-              <div className="size-2 shrink-0 rounded-full bg-green-500" />
+            {screenshots.length > 0 && (
+              <div className="flex items-center gap-1">
+                <div className="size-2 shrink-0 rounded-full bg-green-500" />
+                {screenshots.length > 1 && (
+                  <span className="text-[10px] tabular-nums text-muted-foreground">{screenshots.length}</span>
+                )}
+              </div>
             )}
           </div>
         </AccordionTrigger>
@@ -169,26 +174,20 @@ export function TicketCard({
 
           {ticket.needsScreenshot && (
             <div className="space-y-2">
-              {screenshot ? (
-                <div className="flex items-start gap-3">
-                  <ScreenshotPreview src={screenshot} />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onCaptureScreenshot}
-                  >
-                    Recapture
-                  </Button>
+              {screenshots.length > 0 && (
+                <div className="flex flex-wrap items-start gap-3">
+                  {screenshots.map((src, si) => (
+                    <ScreenshotPreview key={si} src={src} />
+                  ))}
                 </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onCaptureScreenshot}
-                >
-                  Capture screenshot
-                </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCaptureScreenshot}
+              >
+                {screenshots.length > 0 ? "Add screenshot" : "Capture screenshot"}
+              </Button>
               {ticket.timestampContext && (
                 <p className="text-xs text-muted-foreground">
                   Expected: {ticket.timestampContext}

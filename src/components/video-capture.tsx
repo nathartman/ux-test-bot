@@ -45,7 +45,7 @@ interface VideoCaptureProps {
   onCapture: (blob: Blob) => void;
   onClose: () => void;
   onUpdateTimestamp: (ms: number) => void;
-  existingScreenshot: Blob | null;
+  existingScreenshots: (Blob | string)[];
 }
 
 export function VideoCapture({
@@ -55,7 +55,7 @@ export function VideoCapture({
   onCapture,
   onClose,
   onUpdateTimestamp,
-  existingScreenshot,
+  existingScreenshots,
 }: VideoCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -211,18 +211,22 @@ export function VideoCapture({
             <Button onClick={handleCapture} disabled={capturing}>
               {capturing
                 ? "Capturing…"
-                : existingScreenshot
-                  ? "Recapture"
+                : existingScreenshots.length > 0
+                  ? "Add screenshot"
                   : "Capture screenshot"}
             </Button>
           </div>
 
-          {existingScreenshot && (
+          {existingScreenshots.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
-                Current screenshot:
+                {existingScreenshots.length === 1 ? "Current screenshot:" : `${existingScreenshots.length} screenshots:`}
               </p>
-              <ScreenshotPreview src={existingScreenshot} />
+              <div className="flex flex-wrap gap-2">
+                {existingScreenshots.map((src, i) => (
+                  <ScreenshotPreview key={i} src={src} />
+                ))}
+              </div>
             </div>
           )}
         </div>

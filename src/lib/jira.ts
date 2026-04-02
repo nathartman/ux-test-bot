@@ -224,13 +224,15 @@ export async function createIssue(
 
 export async function uploadAttachment(
   issueKey: string,
-  screenshot: Blob
+  screenshot: Blob,
+  screenshotIndex: number = 0
 ): Promise<void> {
+  const suffix = screenshotIndex === 0 ? "" : `-${screenshotIndex + 1}`;
   const formData = new FormData();
   formData.append(
     "file",
     new Blob([screenshot], { type: "image/png" }),
-    `${issueKey}-screenshot.png`
+    `${issueKey}-screenshot${suffix}.png`
   );
 
   const res = await fetch(
@@ -487,7 +489,7 @@ export async function createDesignSubtask(
 
 export async function fileTickets(
   tickets: TicketProposal[],
-  screenshots: Record<string, Blob>,
+  screenshots: Record<string, Blob[]>,
   zoomLink: string,
   zoomPasscode: string,
   sessionDate: string,
@@ -514,12 +516,12 @@ export async function fileTickets(
 
       const issue = await createIssue(ticketToFile, description);
 
-      const screenshot = screenshots[String(i)];
-      if (screenshot) {
+      const ticketScreenshots = screenshots[String(i)] ?? [];
+      for (let si = 0; si < ticketScreenshots.length; si++) {
         try {
-          await uploadAttachment(issue.key, screenshot);
+          await uploadAttachment(issue.key, ticketScreenshots[si], si);
         } catch (err) {
-          console.error(`Failed to upload attachment for ${issue.key}:`, err);
+          console.error(`Failed to upload attachment ${si} for ${issue.key}:`, err);
         }
       }
 

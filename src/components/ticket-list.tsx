@@ -13,7 +13,7 @@ interface TicketListProps {
   onTicketsChange: (tickets: TicketProposal[]) => void;
   videoUrl: string | null;
   onCaptureScreenshot: (ticketIndex: number) => void;
-  screenshots: Record<string, Blob>;
+  screenshots: Record<string, (Blob | string)[]>;
   onFileTickets: () => Promise<void>;
 }
 
@@ -69,7 +69,7 @@ export function TicketList({
               index={i}
               onChange={(updated) => handleTicketChange(i, updated)}
               onCaptureScreenshot={() => onCaptureScreenshot(i)}
-              screenshot={screenshots[String(i)] ?? null}
+              screenshots={screenshots[String(i)] ?? []}
             />
           ))}
         </Accordion>
